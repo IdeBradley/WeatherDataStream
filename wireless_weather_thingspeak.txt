@@ -1,0 +1,140 @@
+// used original code for BMP180, modified sept1 to accommodate the Arduino Mega and connections....
+
+
+#include <stdio.h>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP085_U.h>
+
+#define DEBUG true
+#define INTERVAL 30
+// debug set to true
+// interval every minute
+
+Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
+
+void setup(void) {
+    if(DEBUG) {
+      Serial.begin(9600);
+    }
+    Serial1.begin(115200);
+
+  if(!bmp.begin())
+  {
+    /* There was a problem detecting the BMP085 ... check your connections */
+    Serial.print("Ooops, no BMP085 detected ... Check your wiring or I2C ADDR!");
+    while(1);
+  }
+  
+    
+    sendData("AT\r\n","OK",10000);
+    sendData("AT+RST\r\n","ready",10000);
+    sendData("AT+CWMODE=3","OK",10000); 
+    sendData("AT+CWJAP=\"b1\",\"ed174b4c5e\"","OK",10000); 
+}
+
+void loop(void) {
+    long millisecs = millis();
+    float t = getTemp();
+    float p = getPress();
+    //t = getTemp();
+    
+    // Sept4:  modify to ensure wifi connection
+    
+    String reply = sendData("AT+CWJAP?","OK",10000); 
+
+    if ( reply.indexOf("b1")> -1)
+    {
+        sendData("AT\r\n","OK",10000);
+        sendData("AT+RST\r\n","ready",10000);
+        sendData("AT+CWMODE=3","OK",10000); 
+        sendData("AT+CWJAP=\"###",\"########"","OK",10000);   // was home network password - masked
+    }
+    
+    sendData("AT+CIPSTART=\"TCP\",\"184.106.153.149\",80",10000); 
+    String cmd = "GET /update?key=TUL8J4ZQIN42X1WO&field1=";
+    // added write API key for my THIngspeak
+    cmd += t;
+    cmd += "&field2=";
+    cmd += p;
+    cmd += "\r\n";
+    String cmd1 = "AT+CIPSEND=";
+    cmd1 += cmd.length();
+    sendData( cmd1, ">", 2000 ); 
+    sendData( cmd, "OK", 2000 ); 
+
+
+    while( millis()-millisecs < 60000L* INTERVAL ){
+        delay( 10 );
+    }
+}
+
+String sendDataOK(String command, const int timeout, boolean debug) {
+    String response = "";
+    Serial1.print(command); 
+    Serial1.print("\r\n"); 
+        while(Serial1.available()) {   
+            char c = Serial1.read(); 
+            response+=c;
+        }  
+      Serial.print(response);
+      
+    return response;
+}
+
+String sendData(String command, const int timeout) {
+    String response = "";
+    Serial1.print(command); 
+    Serial1.print("\r\n"); 
+    long int time = millis();
+    while( (time+timeout) > millis()) {
+        while(Serial1.available()) {   
+            char c = Serial1.read(); 
+            response+=c;
+        }  
+    }
+    if(DEBUG) {
+        Serial.print(response);
+    }
+    return response;
+}
+
+String sendData(String command, String term, const int timeout) {
+    String response = "";
+    Serial1.print(command); 
+    Serial1.print("\r\n"); 
+    long int time = millis();
+    while( (time+timeout) > millis() && response.indexOf( term ) < 0 ) {
+        while(Serial1.available()) {   
+            char c = Serial1.read(); 
+            response+=c;
+        }  
+    }
+    if(DEBUG) {
+        Serial.print(response);
+    }
+    return response;
+}
+
+// temp query
+float getTemp() 
+{
+ 
+  sensors_event_t event;
+  bmp.getEvent(&event);
+  float temperature;
+  bmp.getTemperature(&temperature);
+  return temperature;
+}
+
+// pressure query
+float getPress() 
+{
+ 
+  sensors_event_t event;
+  bmp.getEvent(&event);
+  return event.pressure ;
+   
+}
+
+ 
